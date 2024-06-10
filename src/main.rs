@@ -1,5 +1,6 @@
+#![allow(clippy::redundant_closure_call)]
 use clap::Parser;
-use std::fs;
+use std::{collections::LinkedList, fs};
 // use std::io::stdin;
 mod parser;
 mod tokenizer;
@@ -18,8 +19,12 @@ fn main() -> Result<(), String> {
     let args = Args::parse();
     let file = args.file;
     let raw_code = fs::read_to_string(file).expect("File not found.");
-    let tokens = tokenizer::tokenize(&raw_code);
+    let tokens = tokenizer::tokenize(&raw_code).unwrap();
     println!("{:?}", &tokens);
+
+    let program = parser::parse(tokens.into());
+
+    dbg!(program);
 
     // let p = parser::parse(&mut tokenizer::tokenize(raw_code.as_str()));
     // let out_code = codegen::compile(p).unwrap();

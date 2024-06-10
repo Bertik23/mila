@@ -1,0 +1,9 @@
+program test;
+
+var i : integer;
+const MAX : integer;
+
+function test_fn (a: integer): array [0..10] of integer;
+begin
+    if then else
+end;

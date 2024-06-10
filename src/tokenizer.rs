@@ -6,6 +6,7 @@ use regex::Regex;
 pub enum Token {
     Function,
     Var,
+    Const,
     Begin,
     End,
     Semicolon,
@@ -21,6 +22,7 @@ pub enum Token {
     Greater,
     GreaterEq,
     Equal,
+    NotEq,
     LParen,
     RParen,
     Program,
@@ -31,9 +33,17 @@ pub enum Token {
     DotDot,
     Dot,
     EOF,
+    Array,
+    Of,
+    If,
+    While,
+    For,
+    Then,
+    Else,
+    Do,
     // Text(String),
     Ident(String),
-    Integer(String),
+    Integer(i32),
     String(String),
 }
 
@@ -104,6 +114,8 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
             Function,
             r"^var\s",
             Var,
+            r"^const\s",
+            Const,
             r"^begin\s",
             Begin,
             r"^end",
@@ -124,6 +136,8 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
             Mod,
             r"^exit\s",
             Exit,
+            r"^<>",
+            NotEq,
             r"^<",
             Less,
             r"^<=",
@@ -151,16 +165,46 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
             r"^\.\.",
             DotDot,
             r"^\.",
-            Dot
+            Dot,
+            r"^array\s",
+            Array,
+            r"^of\s",
+            Of
         );
 
         strip_token_param!(
             s,
             out,
             r"^[a-zA-Z][a-zA-Z0-9_]*",
-            Ident,
+            |x: &str| {
+                match x {
+                    "array" => Array,
+                    "of" => Of,
+                    "while" => While,
+                    "if" => If,
+                    "for" => For,
+                    "then" => Then,
+                    "else" => Else,
+                    "do" => Do,
+                    id => Ident(id.to_string()),
+                }
+            },
             r"^($[0-9A-Fa-f]+)|(&[0-7]+)|([0-9]+)",
-            Integer,
+            |x: &str| {
+                if x.starts_with('$') {
+                    Integer(
+                        i32::from_str_radix(x.trim_start_matches('$'), 16)
+                            .unwrap(),
+                    )
+                } else if x.starts_with('&') {
+                    Integer(
+                        i32::from_str_radix(x.trim_start_matches('&'), 8)
+                            .unwrap(),
+                    )
+                } else {
+                    Integer(x.parse().unwrap())
+                }
+            },
             "^\".*\"",
             Token::String,
             "^'.*'",
