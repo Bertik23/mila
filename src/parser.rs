@@ -33,7 +33,10 @@ enum Expression {
         then: Box<Expression>,
         el: Option<Box<Expression>>,
     },
-    While,
+    While {
+        cond: Box<Expression>,
+        body: Box<Expression>,
+    },
     For,
     Op(Operation, Box<Expression>, Box<Expression>),
     Nothing,
@@ -208,6 +211,8 @@ fn parse_expression(token_stream: &mut VecDeque<Token>) -> Expression {
     match token_stream.front() {
         Some(Token::Begin) => parse_block(token_stream),
         Some(Token::If) => parse_if(token_stream),
+        Some(Token::While) => parse_while(token_stream),
+        Some(Token::For) => parse_for(token_stream),
         _ => Expression::Nothing,
     }
 }
@@ -245,6 +250,22 @@ fn parse_if(token_stream: &mut VecDeque<Token>) -> Expression {
         _ => None,
     };
     Expression::If { cond, then, el }
+}
+
+fn parse_while(token_stream: &mut VecDeque<Token>) -> Expression {
+    if !matches!(token_stream.pop_front(), Some(Token::While)) {
+        panic!("Syntax error: Expected 'while'");
+    }
+    let cond = Box::new(parse_expression(token_stream));
+    if !matches!(token_stream.pop_front(), Some(Token::Do)) {
+        panic!("Syntax error: Expected 'do'");
+    }
+    let body = Box::new(parse_expression(token_stream));
+    Expression::While { cond, body }
+}
+
+fn parse_for(token_stream: &mut VecDeque<Token>) -> Expression {
+    todo!()
 }
 
 fn parse_type(token_stream: &mut VecDeque<Token>) -> Type {
