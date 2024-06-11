@@ -39,6 +39,10 @@ enum Expression {
     },
     For,
     Op(Operation, Box<Expression>, Box<Expression>),
+    Var(String),
+    Literal(i32),
+    Call(String, Vec<Expression>),
+    Exit,
     Nothing,
 }
 
@@ -56,6 +60,8 @@ enum Operation {
     Geq,
     Eq,
     Neq,
+    And,
+    Or,
 }
 
 #[derive(Debug)]
@@ -85,25 +91,22 @@ pub struct Program {
 }
 
 pub fn parse(mut token_stream: VecDeque<Token>) -> Program {
-    println!("{:?}", token_stream.front());
     if let Some(Token::Program) = token_stream.pop_front() {
     } else {
-        println!("{:?}", token_stream.front());
         panic!("Syntax error: Expected 'program'")
     }
-    if let Some(Token::Ident(_)) = token_stream.pop_front() {
-    } else {
-        panic!("Syntax error: Expected identifier")
-    }
-    if let Some(Token::Semicolon) = token_stream.pop_front() {
-    } else {
-        panic!("Syntax error: Expected ';'")
-    };
+    parse_ident(&mut token_stream);
+    parse_semicolon(&mut token_stream);
 
     let globals = parse_var_declarations(&mut token_stream);
     let functions = parse_function_declarations(&mut token_stream);
     let main_vars = parse_var_declarations(&mut token_stream);
     let main_expr = parse_expression(&mut token_stream);
+
+    if let Some(Token::Dot) = token_stream.pop_front() {
+    } else {
+        panic!("Syntax error: Expected '.'")
+    };
 
     Program {
         globals,
@@ -182,6 +185,7 @@ fn parse_fn_declaration(token_stream: &mut VecDeque<Token>) -> FnDec {
     let locals = parse_var_declarations(token_stream);
 
     let expr = parse_expression(token_stream);
+    parse_semicolon(token_stream);
     FnDec {
         ident,
         typ,
@@ -213,7 +217,8 @@ fn parse_expression(token_stream: &mut VecDeque<Token>) -> Expression {
         Some(Token::If) => parse_if(token_stream),
         Some(Token::While) => parse_while(token_stream),
         Some(Token::For) => parse_for(token_stream),
-        _ => Expression::Nothing,
+        _ => parse_operation_l7(token_stream),
+        // _ => Expression::Nothing,
     }
 }
 
@@ -226,7 +231,10 @@ fn parse_block(token_stream: &mut VecDeque<Token>) -> Expression {
     while match token_stream.pop_front() {
         Some(Token::Semicolon) => true,
         Some(Token::End) => false,
-        _ => panic!("Syntax error. Expected 'end' or ';'."),
+        something => panic!(
+            "Syntax error. Expected 'end' or ';' found {:?}. {:?}",
+            something, token_stream
+        ),
     } {
         exprs.push(parse_expression(token_stream));
     }
@@ -239,7 +247,7 @@ fn parse_if(token_stream: &mut VecDeque<Token>) -> Expression {
     }
     let cond = Box::new(parse_expression(token_stream));
     if !matches!(token_stream.pop_front(), Some(Token::Then)) {
-        panic!("Syntax error: Expected 'then'");
+        panic!("Syntax error: Expected 'then' {:?}", token_stream);
     }
     let then = Box::new(parse_expression(token_stream));
     let el = match token_stream.front() {
@@ -266,6 +274,148 @@ fn parse_while(token_stream: &mut VecDeque<Token>) -> Expression {
 
 fn parse_for(token_stream: &mut VecDeque<Token>) -> Expression {
     todo!()
+}
+
+fn parse_operation_l7(token_stream: &mut VecDeque<Token>) -> Expression {
+    let lhs = parse_operation_l6(token_stream);
+    let rhs = if matches!(token_stream.front(), Some(Token::Assign)) {
+        token_stream.pop_front();
+        parse_operation_l7(token_stream)
+    } else {
+        return lhs;
+    };
+    Expression::Op(Operation::Assign, Box::new(lhs), Box::new(rhs))
+}
+
+fn parse_operation_l6(token_stream: &mut VecDeque<Token>) -> Expression {
+    let mut lhs = parse_operation_l5(token_stream);
+    while let Some(op) = match token_stream.front() {
+        Some(Token::And) => Some(Operation::And),
+        Some(Token::Or) => Some(Operation::Or),
+        _ => None,
+    } {
+        token_stream.pop_front();
+        lhs = Expression::Op(
+            op,
+            Box::new(lhs),
+            Box::new(parse_operation_l5(token_stream)),
+        );
+    }
+    lhs
+}
+
+fn parse_operation_l5(token_stream: &mut VecDeque<Token>) -> Expression {
+    let mut lhs = parse_operation_l4(token_stream);
+    while let Some(op) = match token_stream.front() {
+        Some(Token::Equal) => Some(Operation::Eq),
+        Some(Token::NotEq) => Some(Operation::Neq),
+        _ => None,
+    } {
+        token_stream.pop_front();
+        lhs = Expression::Op(
+            op,
+            Box::new(lhs),
+            Box::new(parse_operation_l4(token_stream)),
+        );
+    }
+    lhs
+}
+
+fn parse_operation_l4(token_stream: &mut VecDeque<Token>) -> Expression {
+    let mut lhs = parse_operation_l3(token_stream);
+    while let Some(op) = match token_stream.front() {
+        Some(Token::Less) => Some(Operation::Less),
+        Some(Token::LessEq) => Some(Operation::Leq),
+        Some(Token::Greater) => Some(Operation::Grater),
+        Some(Token::GreaterEq) => Some(Operation::Geq),
+        _ => None,
+    } {
+        token_stream.pop_front();
+        lhs = Expression::Op(
+            op,
+            Box::new(lhs),
+            Box::new(parse_operation_l3(token_stream)),
+        );
+    }
+    lhs
+}
+
+fn parse_operation_l3(token_stream: &mut VecDeque<Token>) -> Expression {
+    let mut lhs = parse_operation_l2(token_stream);
+    while let Some(op) = match token_stream.front() {
+        Some(Token::Plus) => Some(Operation::Add),
+        Some(Token::Minus) => Some(Operation::Sub),
+        _ => None,
+    } {
+        token_stream.pop_front();
+        lhs = Expression::Op(
+            op,
+            Box::new(lhs),
+            Box::new(parse_operation_l2(token_stream)),
+        );
+    }
+    lhs
+}
+
+fn parse_operation_l2(token_stream: &mut VecDeque<Token>) -> Expression {
+    let mut lhs = parse_operation_l1(token_stream);
+    while let Some(op) = match token_stream.front() {
+        Some(Token::Star) => Some(Operation::Mul),
+        Some(Token::Div) => Some(Operation::Div),
+        Some(Token::Mod) => Some(Operation::Mod),
+        _ => None,
+    } {
+        token_stream.pop_front();
+        lhs = Expression::Op(
+            op,
+            Box::new(lhs),
+            Box::new(parse_operation_l1(token_stream)),
+        );
+    }
+    lhs
+}
+fn parse_operation_l1(token_stream: &mut VecDeque<Token>) -> Expression {
+    parse_operation_l0(token_stream)
+}
+
+fn parse_operation_l0(token_stream: &mut VecDeque<Token>) -> Expression {
+    if matches!(token_stream.front(), Some(Token::Integer(_))) {
+        parse_literal(token_stream)
+    } else if matches!(token_stream.front(), Some(Token::Ident(_))) {
+        let id = parse_ident(token_stream);
+        if matches!(token_stream.front(), Some(Token::LParen)) {
+            token_stream.pop_front();
+            let call_args =
+                if !matches!(token_stream.front(), Some(Token::RParen)) {
+                    parse_call_args(token_stream)
+                } else {
+                    Vec::new()
+                };
+            parse_rparen(token_stream);
+            Expression::Call(id, call_args)
+        } else {
+            Expression::Var(id)
+        }
+    } else if matches!(token_stream.front(), Some(Token::Exit)) {
+        token_stream.pop_front();
+        Expression::Exit
+    } else if matches!(token_stream.front(), Some(Token::LParen)) {
+        token_stream.pop_front();
+        let e = parse_expression(token_stream);
+        parse_rparen(token_stream);
+        e
+    } else {
+        Expression::Nothing
+    }
+}
+
+fn parse_call_args(token_stream: &mut VecDeque<Token>) -> Vec<Expression> {
+    let mut vec = vec![parse_expression(token_stream)];
+    while matches!(token_stream.front(), Some(Token::Comma)) {
+        token_stream.pop_front();
+        vec.push(parse_expression(token_stream));
+    }
+    vec
 }
 
 fn parse_type(token_stream: &mut VecDeque<Token>) -> Type {
@@ -319,6 +469,10 @@ fn parse_integer(token_stream: &mut VecDeque<Token>) -> i32 {
     }
 }
 
+fn parse_literal(token_stream: &mut VecDeque<Token>) -> Expression {
+    Expression::Literal(parse_integer(token_stream))
+}
+
 fn parse_colon(token_stream: &mut VecDeque<Token>) {
     if !matches!(token_stream.pop_front(), Some(Token::Collon)) {
         panic!("Syntax error: Expected ':'");
@@ -336,8 +490,21 @@ fn parse_lbracket(token_stream: &mut VecDeque<Token>) {
         panic!("Syntax error: Expected '['");
     };
 }
+
 fn parse_rbracket(token_stream: &mut VecDeque<Token>) {
     if !matches!(token_stream.pop_front(), Some(Token::RBracket)) {
         panic!("Syntax error: Expected ']'");
+    };
+}
+
+fn parse_lparen(token_stream: &mut VecDeque<Token>) {
+    if !matches!(token_stream.pop_front(), Some(Token::LParen)) {
+        panic!("Syntax error: Expected '('");
+    };
+}
+
+fn parse_rparen(token_stream: &mut VecDeque<Token>) {
+    if !matches!(token_stream.pop_front(), Some(Token::RParen)) {
+        panic!("Syntax error: Expected ')'");
     };
 }

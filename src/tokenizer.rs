@@ -23,6 +23,8 @@ pub enum Token {
     GreaterEq,
     Equal,
     NotEq,
+    Or,
+    And,
     LParen,
     RParen,
     Program,
@@ -152,8 +154,6 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
             LParen,
             r"^\)",
             RParen,
-            r"^program\s",
-            Program,
             r"^,",
             Comma,
             r"^:",
@@ -165,11 +165,7 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
             r"^\.\.",
             DotDot,
             r"^\.",
-            Dot,
-            r"^array\s",
-            Array,
-            r"^of\s",
-            Of
+            Dot
         );
 
         strip_token_param!(
@@ -186,6 +182,12 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
                     "then" => Then,
                     "else" => Else,
                     "do" => Do,
+                    "or" => Or,
+                    "and" => And,
+                    "function" => Function,
+                    "begin" => Begin,
+                    "end" => End,
+                    "program" => Program,
                     id => Ident(id.to_string()),
                 }
             },
