@@ -188,6 +188,7 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
                     "begin" => Begin,
                     "end" => End,
                     "program" => Program,
+                    "exit" => Exit,
                     id => Ident(id.to_string()),
                 }
             },

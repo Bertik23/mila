@@ -2,31 +2,31 @@ use std::collections::VecDeque;
 
 use crate::tokenizer::Token;
 
-#[derive(Debug)]
-struct VarDec {
+#[derive(Debug, Clone)]
+pub struct VarDec {
     is_const: bool,
-    ident: String,
-    typ: Type,
-    assign: Option<Assign>,
+    pub ident: String,
+    pub typ: Type,
+    pub assign: Option<Expression>,
 }
 
-#[derive(Debug)]
-struct FnDec {
-    ident: String,
-    typ: Type,
-    params: Vec<Var>,
-    locals: Vec<VarDec>,
-    expr: Expression,
+#[derive(Debug, Clone)]
+pub struct FnDec {
+    pub ident: String,
+    pub typ: Type,
+    pub params: Vec<Var>,
+    pub locals: Vec<VarDec>,
+    pub expr: Expression,
 }
 
-#[derive(Debug)]
-struct Var {
-    ident: String,
-    typ: Type,
+#[derive(Debug, Clone)]
+pub struct Var {
+    pub ident: String,
+    pub typ: Type,
 }
 
-#[derive(Debug)]
-enum Expression {
+#[derive(Debug, Clone)]
+pub enum Expression {
     Block(Vec<Expression>),
     If {
         cond: Box<Expression>,
@@ -46,8 +46,8 @@ enum Expression {
     Nothing,
 }
 
-#[derive(Debug)]
-enum Operation {
+#[derive(Debug, Clone)]
+pub enum Operation {
     Add,
     Sub,
     Mul,
@@ -69,8 +69,8 @@ enum UnOp {}
 #[derive(Debug)]
 enum BinOp {}
 
-#[derive(Debug)]
-enum Type {
+#[derive(Debug, Clone)]
+pub enum Type {
     Array {
         of: Box<Type>,
         start_index: i32,
@@ -80,14 +80,12 @@ enum Type {
 }
 
 #[derive(Debug)]
-struct Assign;
-
-#[derive(Debug)]
 pub struct Program {
-    globals: Vec<VarDec>,
-    functions: Vec<FnDec>,
-    main_vars: Vec<VarDec>,
-    main_expr: Expression,
+    pub name: String,
+    pub globals: Vec<VarDec>,
+    pub functions: Vec<FnDec>,
+    pub main_vars: Vec<VarDec>,
+    pub main_expr: Expression,
 }
 
 pub fn parse(mut token_stream: VecDeque<Token>) -> Program {
@@ -95,7 +93,7 @@ pub fn parse(mut token_stream: VecDeque<Token>) -> Program {
     } else {
         panic!("Syntax error: Expected 'program'")
     }
-    parse_ident(&mut token_stream);
+    let name = parse_ident(&mut token_stream);
     parse_semicolon(&mut token_stream);
 
     let globals = parse_var_declarations(&mut token_stream);
@@ -109,6 +107,7 @@ pub fn parse(mut token_stream: VecDeque<Token>) -> Program {
     };
 
     Program {
+        name,
         globals,
         functions,
         main_vars,
@@ -132,22 +131,40 @@ fn parse_var_declaration(token_stream: &mut VecDeque<Token>) -> Vec<VarDec> {
         _ => panic!("Syntax error: Expected 'var' or 'const' "),
     };
 
-    let ident = parse_ident(token_stream);
+    let mut out = Vec::new();
 
-    if !matches!(token_stream.pop_front(), Some(Token::Collon)) {
-        panic!("Syntax error: Expected ':'")
+    while matches!(token_stream.front(), Some(Token::Ident(_))) {
+        let ident = parse_ident(token_stream);
+        let assign = if matches!(token_stream.front(), Some(Token::Equal)) {
+            token_stream.pop_front();
+            Some(parse_expression(token_stream))
+        } else {
+            None
+        };
+        let typ = match assign {
+            Some(_) => Type::Integer,
+            None => {
+                parse_colon(token_stream);
+                parse_type(token_stream)
+            }
+        };
+        out.push(VarDec {
+            is_const,
+            ident,
+            assign,
+            typ,
+        })
     }
 
-    let typ = parse_type(token_stream);
+    // if !matches!(token_stream.pop_front(), Some(Token::Collon)) {
+    //     panic!("Syntax error: Expected ':'")
+    // }
+    //
+    // let typ = parse_type(token_stream);
 
     parse_semicolon(token_stream);
 
-    vec![VarDec {
-        is_const,
-        ident,
-        assign: None,
-        typ,
-    }]
+    out
 }
 
 fn parse_function_declarations(
@@ -280,7 +297,7 @@ fn parse_operation_l7(token_stream: &mut VecDeque<Token>) -> Expression {
     let lhs = parse_operation_l6(token_stream);
     let rhs = if matches!(token_stream.front(), Some(Token::Assign)) {
         token_stream.pop_front();
-        parse_operation_l7(token_stream)
+        parse_expression(token_stream)
     } else {
         return lhs;
     };
@@ -480,8 +497,9 @@ fn parse_colon(token_stream: &mut VecDeque<Token>) {
 }
 
 fn parse_semicolon(token_stream: &mut VecDeque<Token>) {
-    if !matches!(token_stream.pop_front(), Some(Token::Semicolon)) {
-        panic!("Syntax error: Expected ';'");
+    match token_stream.pop_front() {
+        Some(Token::Semicolon) => {}
+        e => panic!("Syntax error: Expected ';' found '{:?}'", e),
     };
 }
 

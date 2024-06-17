@@ -10,19 +10,21 @@ expression = block | if | while | for | operationL6 | ;
 
 block = "begin" expression { ";" expression } "end"; 
 
-operationL0 = identifier | literal | identifier "(" call_args ")" | "(" expression ")"  | identifier "[" expression "]" ;
+operationL0 = identifier | literal | identifier "(" [ call_args ] ")" | "(" expression ")"  | identifier "[" expression "]" ;
 
 operationL1 = operationL0 | "!" operationL1 | "~" operationL1 | "-" operationL1 | "+" operationL1 ;
 
 operationL2 = operationL1 { ( "*" | "/" | "%" ) operationL2 } ;
 
-operationL3 = operationL2 { ( "+" | "-" | "%" ) operationL2 } ;
+operationL3 = operationL2 { ( "+" | "-" ) operationL2 } ;
 
 operationL4 = operationL3 { ( "<" | ">" ) operationL3 } ;
 
-operationL5 = operationL4 { ( "=" | "<>" ) operationL3 } ;
+operationL5 = operationL4 { ( "=" | "<>" ) operationL4 } ;
 
-operationL6 = operationL5 { ":=" operationL5 } ;
+operationL6 = operationL5 { ( "=" | "<>" ) operationL5 } ;
+
+operationL7 = operationL6 [ ":=" operationL7 ] ;
 
 if = "if" expression "then" expression [ "else" expression ] ;
 
@@ -30,6 +32,6 @@ while = "while" expression "do" expression ;
 
 for = "for" identifier ":" expression ( "to" | "downto" ) expression "do" expression ;
 
-call_args = expression { ";" expression } ;
+call_args = expression { "," expression } ;
 
 type = "integer" | "array" "[" literal ".." literal "]" "of" type ;

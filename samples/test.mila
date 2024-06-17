@@ -3,7 +3,36 @@ program test;
 var i : integer;
 const MAX : integer;
 
-function test_fn (a: integer): array [0..10] of integer;
+function test_fn (a: integer, b: integer): array [0..10] of integer;
 begin
-    if then else
+    write(a);
+    writeln(b);
+    test_fn := 666;
 end;
+
+function iter(a: integer): integer;
+var m : integer;
+begin
+    iter := if a then begin m := iter(a-1); write(m); m end else
+    begin
+    m := test_fn(a, 52);
+    writeln(m);
+    m
+    end
+end;
+
+function add(a: integer, b: integer): integer;
+begin
+    add := a + b;
+    exit
+end;
+
+var o : integer;
+var p : integer;
+var r : integer;
+begin
+    readln(o);
+    readln(p);
+    r := add(o,p);
+    writeln(r);
+end.

@@ -1,36 +1,57 @@
 #![allow(clippy::redundant_closure_call)]
 use clap::Parser;
-use std::{collections::LinkedList, fs};
-// use std::io::stdin;
+use std::process::Command;
+use std::{fs, io::Write};
+
+mod codegen;
 mod parser;
 mod tokenizer;
 
 #[derive(Parser, Debug)]
 struct Args {
-    /// Interactive mode, evaluates one line at a time. Really dumb. Not nice to use.
-    #[arg(short, long, default_value_t = false)]
-    interactive: bool,
-
     /// File to run
     file: String,
+    /// Path where to write output
+    #[arg(short, long)]
+    output: Option<String>,
+
+    /// Compile?
+    #[arg(short, long, default_value_t = false)]
+    compile: bool,
 }
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
     let file = args.file;
-    let raw_code = fs::read_to_string(file).expect("File not found.");
+    let raw_code = fs::read_to_string(&file).expect("File not found.");
     let tokens = tokenizer::tokenize(&raw_code).unwrap();
-    println!("{:?}", &tokens);
 
     let program = parser::parse(tokens.into());
 
-    dbg!(program);
+    dbg!(&program);
 
-    // let p = parser::parse(&mut tokenizer::tokenize(raw_code.as_str()));
-    // let out_code = codegen::compile(p).unwrap();
-    // // println!("{}", out_code.clone().borrow());
-    // let mut m = secd::mashine::SECD::new(out_code);
-    // m.eval();
-    // println!("{}", m);
+    let file_name = if let Some(o) = args.output {
+        o
+    } else {
+        let file_name = file.split_at(file.rfind('/').map_or(0, |x| x + 1)).1;
+        file_name
+            .split_at(file_name.rfind('.').unwrap_or(file.len()))
+            .0
+            .to_owned()
+            + ".ll"
+    };
+
+    println!("Codegen to {}", file_name);
+    codegen::codegen(program, file_name.as_str());
+
+    if args.compile {
+        let output = Command::new("clang")
+            .arg(file_name)
+            .arg("src/stdlib.c")
+            .output()
+            .unwrap();
+        std::io::stdout().write_all(&output.stdout).unwrap();
+        std::io::stderr().write_all(&output.stderr).unwrap();
+    }
     Ok(())
 }

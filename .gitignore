@@ -2,6 +2,10 @@ build
 samples/*
 !samples/*.mila
 
+*.ll
+*.s
+*.out
+
 
 # Added by cargo
 
