@@ -1,6 +1,10 @@
-use std::collections::{HashMap, LinkedList};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, LinkedList},
+};
 
 use inkwell::{
+    basic_block::BasicBlock,
     context,
     module::Linkage,
     values::{BasicValue, FunctionValue, IntValue, PointerValue},
@@ -15,6 +19,7 @@ struct Compiler<'ctx, 'a> {
     builder: &'a inkwell::builder::Builder<'ctx>,
     variables: &'a mut LinkedList<HashMap<String, PointerValue<'ctx>>>,
     function: Option<FunctionValue<'ctx>>,
+    break_to_block: RefCell<LinkedList<BasicBlock<'ctx>>>,
 }
 
 pub fn codegen(program: Program, outfile: &str) {
@@ -26,6 +31,7 @@ pub fn codegen(program: Program, outfile: &str) {
         builder: &inkwell_context.create_builder(),
         variables: &mut LinkedList::new(),
         function: None,
+        break_to_block: RefCell::new(LinkedList::new()),
     };
     ctx.codegen(program);
     module.print_to_file(outfile).unwrap();
@@ -36,6 +42,7 @@ enum Values<'a> {
     Ptr(PointerValue<'a>),
     Nop,
     Ret,
+    Break,
 }
 
 impl<'ctx, 'a> Compiler<'ctx, 'a> {
@@ -63,6 +70,10 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
             read_fn_type,
             Some(Linkage::External),
         );
+        self.module
+            .add_function("inc", read_fn_type, Some(Linkage::External));
+        self.module
+            .add_function("dec", read_fn_type, Some(Linkage::External));
 
         self.variables.push_back(HashMap::new());
         for glob in program.globals {
@@ -160,6 +171,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
         self.builder.build_return(Some(
             &self.load_val(self.codegen_expr(func.expr)).unwrap(),
         ));
+        self.variables.pop_back();
     }
 
     fn codegen_expr(&self, expr: Expression) -> Values {
@@ -216,6 +228,13 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                             self.builder.build_int_mul(l, r, "mul").unwrap(),
                         )
                     }
+                    Operation::Div => {
+                        let l = self.load_val(l).unwrap();
+                        let r = self.load_val(r).unwrap();
+                        Values::Int(
+                            self.builder.build_int_mul(l, r, "mul").unwrap(),
+                        )
+                    }
                     Operation::Mod => {
                         let l = self.load_val(l).unwrap();
                         let r = self.load_val(r).unwrap();
@@ -239,6 +258,13 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                         let r = self.load_val(r).unwrap();
                         Values::Int(
                             self.builder.build_int_mul(l, r, "and").unwrap(),
+                        )
+                    }
+                    Operation::Or => {
+                        let l = self.load_val(l).unwrap();
+                        let r = self.load_val(r).unwrap();
+                        Values::Int(
+                            self.builder.build_int_add(l, r, "or").unwrap(),
                         )
                     }
                     Operation::Eq => {
@@ -303,6 +329,63 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                                 .into_int_value(),
                         )
                     }
+                    Operation::Geq => {
+                        let l = self.load_val(l).unwrap();
+                        let r = self.load_val(r).unwrap();
+                        let cmp = self
+                            .builder
+                            .build_int_compare(IntPredicate::SGE, l, r, "geq")
+                            .unwrap();
+                        Values::Int(
+                            self.builder
+                                .build_cast(
+                                    inkwell::values::InstructionOpcode::SExt,
+                                    cmp,
+                                    self.ctx.i32_type(),
+                                    "cast_cmp_to_i32",
+                                )
+                                .unwrap()
+                                .into_int_value(),
+                        )
+                    }
+                    Operation::Less => {
+                        let l = self.load_val(l).unwrap();
+                        let r = self.load_val(r).unwrap();
+                        let cmp = self
+                            .builder
+                            .build_int_compare(IntPredicate::SLT, l, r, "less")
+                            .unwrap();
+                        Values::Int(
+                            self.builder
+                                .build_cast(
+                                    inkwell::values::InstructionOpcode::SExt,
+                                    cmp,
+                                    self.ctx.i32_type(),
+                                    "cast_cmp_to_i32",
+                                )
+                                .unwrap()
+                                .into_int_value(),
+                        )
+                    }
+                    Operation::Leq => {
+                        let l = self.load_val(l).unwrap();
+                        let r = self.load_val(r).unwrap();
+                        let cmp = self
+                            .builder
+                            .build_int_compare(IntPredicate::SLE, l, r, "leq")
+                            .unwrap();
+                        Values::Int(
+                            self.builder
+                                .build_cast(
+                                    inkwell::values::InstructionOpcode::SExt,
+                                    cmp,
+                                    self.ctx.i32_type(),
+                                    "cast_cmp_to_i32",
+                                )
+                                .unwrap()
+                                .into_int_value(),
+                        )
+                    }
                     Operation::Assign => {
                         let Values::Ptr(l) = l else { panic!() };
                         let r = match r {
@@ -312,7 +395,6 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                         self.builder.build_store(l, r).unwrap();
                         Values::Int(r)
                     }
-                    o => todo!("To implement: {:?}", o),
                 }
             }
             Expression::Block(exprs) => {
@@ -322,11 +404,14 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                     if let Values::Ret = last {
                         return last;
                     }
+                    if let Values::Break = last {
+                        return Values::Nop;
+                    }
                 }
                 last
             }
             Expression::Call(ident, params) => {
-                if ident == "readln" {
+                if ident == "readln" || ident == "dec" || ident == "inc" {
                     let Values::Ptr(p) = self.codegen_expr(params[0].clone())
                     else {
                         panic!("Invalid type.")
@@ -338,7 +423,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                                     .get_function(ident.as_str())
                                     .unwrap(),
                                 &[p.into()],
-                                "call readln",
+                                "call ptr",
                             )
                             .unwrap()
                             .try_as_basic_value()
@@ -357,7 +442,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                 ).unwrap().try_as_basic_value().left().unwrap().into_int_value())
             }
             Expression::If { cond, then, el } => {
-                let bb = self.function.unwrap().get_last_basic_block().unwrap();
+                let bb = self.builder.get_insert_block().unwrap();
                 let c = self.load_val(self.codegen_expr(*cond)).unwrap();
                 let c = self
                     .builder
@@ -380,6 +465,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                 self.builder.position_at_end(then_block);
                 let t = self.codegen_expr(*then);
                 if let Values::Ret = t {
+                } else if let Values::Break = t {
                 } else {
                     let t = self.load_val(t).unwrap().as_basic_value_enum();
                     incoming.push((t, then_block));
@@ -392,6 +478,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                 let e = self
                     .codegen_expr(*el.unwrap_or(Box::new(Expression::Nothing)));
                 if let Values::Ret = e {
+                } else if let Values::Break = e {
                 } else {
                     let e = self.load_val(e).unwrap().as_basic_value_enum();
                     incoming.push((e, else_block));
@@ -446,16 +533,26 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                     .unwrap();
 
                 self.builder.position_at_end(body_bb);
+                self.break_to_block.borrow_mut().push_back(after_bb);
                 let b = self.codegen_expr(*body);
                 self.builder.build_unconditional_branch(cond_bb).unwrap();
 
                 self.builder.position_at_end(after_bb);
+                self.break_to_block.borrow_mut().pop_back().unwrap();
                 b
+            }
+            Expression::For => todo!(),
+            Expression::Break => {
+                self.builder
+                    .build_unconditional_branch(
+                        *self.break_to_block.borrow().back().unwrap(),
+                    )
+                    .unwrap();
+                Values::Break
             }
             Expression::Nothing => {
                 Values::Int(self.ctx.i32_type().const_int(0, false))
-            }
-            e => todo!("{:?}", e),
+            } // e => todo!("{:?}", e),
         }
     }
 
@@ -486,7 +583,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                 .build_load(self.ctx.i32_type(), p, "load_val")?
                 .into_int_value()),
             Values::Int(i) => Ok(i),
-            _ => Err(anyhow::anyhow!("Ahoj")),
+            _ => Ok(self.ctx.i32_type().const_zero()),
         }
     }
 

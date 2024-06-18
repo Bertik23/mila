@@ -43,16 +43,14 @@ pub enum Token {
     Then,
     Else,
     Do,
+    Break,
     // Text(String),
     Ident(String),
     Integer(i32),
     String(String),
 }
 
-fn split_on_pattern<'a>(
-    re: Regex,
-    text: &'a str,
-) -> Option<(&'a str, &'a str)> {
+fn split_on_pattern(re: Regex, text: &str) -> Option<(&str, &str)> {
     if let Some(mat) = re.find(text) {
         let start_index = mat.end();
         Some((&text[..start_index], &text[start_index..]))
@@ -99,16 +97,15 @@ fn min<T: std::cmp::PartialOrd>(a: T, b: T) -> T {
     if a < b {
         return a;
     }
-    return b;
+    b
 }
 
-pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
-    let mut s = code.as_str();
+pub fn tokenize(code: &str) -> Result<Vec<Token>, String> {
+    let mut s = code;
     let mut out = vec![];
     use Token::*;
-    while s.len() != 0 {
+    while !s.is_empty() {
         s = s.trim_start();
-        // println!("{:?}", out.last());
         strip_token!(
             s,
             out,
@@ -140,14 +137,14 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
             Exit,
             r"^<>",
             NotEq,
-            r"^<",
-            Less,
             r"^<=",
             LessEq,
-            r"^>",
-            Greater,
+            r"^<",
+            Less,
             r"^>=",
             GreaterEq,
+            r"^>",
+            Greater,
             r"^=",
             Equal,
             r"^\(",
@@ -189,6 +186,7 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
                     "end" => End,
                     "program" => Program,
                     "exit" => Exit,
+                    "break" => Break,
                     id => Ident(id.to_string()),
                 }
             },
@@ -214,7 +212,9 @@ pub fn tokenize(code: &String) -> Result<Vec<Token>, String> {
             Token::String
         );
 
-        if s.len() == 0 {
+        s = s.trim_start();
+
+        if s.is_empty() {
             out.push(EOF);
         } else {
             return Err(format!(

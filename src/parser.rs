@@ -37,12 +37,18 @@ pub enum Expression {
         cond: Box<Expression>,
         body: Box<Expression>,
     },
-    For,
+    For {
+        var: Var,
+        from: Box<Expression>,
+        to: Box<Expression>,
+        up: bool,
+    },
     Op(Operation, Box<Expression>, Box<Expression>),
     Var(String),
     Literal(i32),
     Call(String, Vec<Expression>),
     Exit,
+    Break,
     Nothing,
 }
 
@@ -148,6 +154,7 @@ fn parse_var_declaration(token_stream: &mut VecDeque<Token>) -> Vec<VarDec> {
                 parse_type(token_stream)
             }
         };
+        parse_semicolon(token_stream);
         out.push(VarDec {
             is_const,
             ident,
@@ -155,14 +162,6 @@ fn parse_var_declaration(token_stream: &mut VecDeque<Token>) -> Vec<VarDec> {
             typ,
         })
     }
-
-    // if !matches!(token_stream.pop_front(), Some(Token::Collon)) {
-    //     panic!("Syntax error: Expected ':'")
-    // }
-    //
-    // let typ = parse_type(token_stream);
-
-    parse_semicolon(token_stream);
 
     out
 }
@@ -234,8 +233,11 @@ fn parse_expression(token_stream: &mut VecDeque<Token>) -> Expression {
         Some(Token::If) => parse_if(token_stream),
         Some(Token::While) => parse_while(token_stream),
         Some(Token::For) => parse_for(token_stream),
+        Some(Token::Break) => {
+            token_stream.pop_front();
+            Expression::Break
+        }
         _ => parse_operation_l7(token_stream),
-        // _ => Expression::Nothing,
     }
 }
 

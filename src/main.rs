@@ -18,6 +18,10 @@ struct Args {
     /// Compile?
     #[arg(short, long, default_value_t = false)]
     compile: bool,
+
+    /// Print AST?
+    #[arg(long, default_value_t = false)]
+    print_ast: bool,
 }
 
 fn main() -> Result<(), String> {
@@ -28,7 +32,9 @@ fn main() -> Result<(), String> {
 
     let program = parser::parse(tokens.into());
 
-    dbg!(&program);
+    if args.print_ast {
+        dbg!(&program);
+    }
 
     let file_name = if let Some(o) = args.output {
         o

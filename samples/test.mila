@@ -3,7 +3,7 @@ program test;
 var i : integer;
 const MAX : integer;
 
-function test_fn (a: integer, b: integer): array [0..10] of integer;
+function test_fn (a: integer; b: integer): array [0..10] of integer;
 begin
     write(a);
     writeln(b);
@@ -21,18 +21,18 @@ begin
     end
 end;
 
-function add(a: integer, b: integer): integer;
+function add(a: integer; b: integer): integer;
 begin
     add := a + b;
     exit
 end;
 
-var o : integer;
-var p : integer;
-var r : integer;
+var j = 0;
 begin
-    readln(o);
-    readln(p);
-    r := add(o,p);
-    writeln(r);
+    while 1 do
+    begin
+        j := j + 1;
+        if j >= 10 then break;
+    end;
+    writeln(j);
 end.
