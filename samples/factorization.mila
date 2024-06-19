@@ -1,9 +1,8 @@
 program factorization;
 
 procedure factorization(n: integer);
-var max, i: integer;
+var max: integer; i: integer;
 begin
-    write('Factors of: ');
     writeln(n);
 
     if n < 4 then
