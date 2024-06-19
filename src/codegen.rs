@@ -1,4 +1,5 @@
 use std::{
+    borrow::BorrowMut,
     cell::RefCell,
     collections::{HashMap, LinkedList},
 };
@@ -17,7 +18,7 @@ struct Compiler<'ctx, 'a> {
     ctx: &'ctx context::Context,
     module: &'a inkwell::module::Module<'ctx>,
     builder: &'a inkwell::builder::Builder<'ctx>,
-    variables: &'a mut LinkedList<HashMap<String, PointerValue<'ctx>>>,
+    variables: RefCell<LinkedList<HashMap<String, PointerValue<'ctx>>>>,
     function: Option<FunctionValue<'ctx>>,
     break_to_block: RefCell<LinkedList<BasicBlock<'ctx>>>,
 }
@@ -29,7 +30,7 @@ pub fn codegen(program: Program, outfile: &str) {
         ctx: &inkwell_context,
         module: &module,
         builder: &inkwell_context.create_builder(),
-        variables: &mut LinkedList::new(),
+        variables: RefCell::new(LinkedList::new()),
         function: None,
         break_to_block: RefCell::new(LinkedList::new()),
     };
@@ -75,7 +76,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
         self.module
             .add_function("dec", read_fn_type, Some(Linkage::External));
 
-        self.variables.push_back(HashMap::new());
+        self.variables.borrow_mut().push_back(HashMap::new());
         for glob in program.globals {
             let t = self.create_type(&glob.typ);
             let g = self.module.add_global(
@@ -91,6 +92,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                 g.set_initializer(&self.ctx.i32_type().const_zero());
             }
             self.variables
+                .borrow_mut()
                 .back_mut()
                 .unwrap()
                 .insert(glob.ident.clone(), g.as_pointer_value());
@@ -137,7 +139,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
         self.function = Some(fun);
         let entry_block = self.ctx.append_basic_block(fun, "entry");
         self.builder.position_at_end(entry_block);
-        self.variables.push_back(HashMap::from([(
+        self.variables.borrow_mut().push_back(HashMap::from([(
             func.ident.clone(),
             self.builder
                 .build_alloca(self.create_type(&func.typ), func.ident.as_str())
@@ -155,6 +157,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                 )
                 .unwrap();
             self.variables
+                .borrow_mut()
                 .back_mut()
                 .unwrap()
                 .insert(var.ident.clone(), ptr);
@@ -171,7 +174,7 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
         self.builder.build_return(Some(
             &self.load_val(self.codegen_expr(func.expr)).unwrap(),
         ));
-        self.variables.pop_back();
+        self.variables.borrow_mut().pop_back();
     }
 
     fn codegen_expr(&self, expr: Expression) -> Values {
@@ -205,7 +208,6 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
             Expression::Op(op, lhs, rhs) => {
                 let l = self.codegen_expr(*lhs);
                 let r = self.codegen_expr(*rhs);
-                println!("Ahojda");
                 match op {
                     Operation::Add => {
                         let l = self.load_val(l).unwrap();
@@ -232,7 +234,9 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                         let l = self.load_val(l).unwrap();
                         let r = self.load_val(r).unwrap();
                         Values::Int(
-                            self.builder.build_int_mul(l, r, "mul").unwrap(),
+                            self.builder
+                                .build_int_signed_div(l, r, "div")
+                                .unwrap(),
                         )
                     }
                     Operation::Mod => {
@@ -541,7 +545,72 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                 self.break_to_block.borrow_mut().pop_back().unwrap();
                 b
             }
-            Expression::For => todo!(),
+            Expression::For {
+                var,
+                from,
+                to,
+                up,
+                body,
+            } => {
+                self.variables.borrow_mut().push_back(HashMap::new());
+                self.codegen_vardec(VarDec {
+                    is_const: false,
+                    ident: var.ident.clone(),
+                    typ: Type::Integer,
+                    assign: Some(*from),
+                });
+                let body_bb = self
+                    .ctx
+                    .append_basic_block(self.function.unwrap(), "for_body");
+
+                let cond_bb = self
+                    .ctx
+                    .append_basic_block(self.function.unwrap(), "for_cond");
+                let after_bb = self
+                    .ctx
+                    .append_basic_block(self.function.unwrap(), "for_after");
+
+                self.builder.build_unconditional_branch(cond_bb).unwrap();
+                self.builder.position_at_end(body_bb);
+                self.break_to_block.borrow_mut().push_back(after_bb);
+                let ret = self.codegen_expr(*body);
+                self.break_to_block.borrow_mut().pop_back();
+                self.codegen_expr(Expression::Op(
+                    Operation::Assign,
+                    Box::new(Expression::Var(var.ident.clone())),
+                    Box::new(Expression::Op(
+                        if up { Operation::Add } else { Operation::Sub },
+                        Box::new(Expression::Var(var.ident.clone())),
+                        Box::new(Expression::Literal(1)),
+                    )),
+                ));
+                self.builder.build_unconditional_branch(cond_bb).unwrap();
+
+                self.builder.position_at_end(cond_bb);
+                let cmp = self
+                    .builder
+                    .build_int_compare(
+                        if up {
+                            IntPredicate::SLE
+                        } else {
+                            IntPredicate::SGE
+                        },
+                        self.load_val(
+                            self.codegen_expr(Expression::Var(var.ident)),
+                        )
+                        .unwrap(),
+                        self.load_val(self.codegen_expr(*to)).unwrap(),
+                        "for_cmp",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(cmp, body_bb, after_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(after_bb);
+
+                ret
+            }
             Expression::Break => {
                 self.builder
                     .build_unconditional_branch(
@@ -552,19 +621,22 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
             }
             Expression::Nothing => {
                 Values::Int(self.ctx.i32_type().const_int(0, false))
-            } // e => todo!("{:?}", e),
+            }
         }
     }
 
-    fn create_type(&self, _typ: &Type) -> inkwell::types::IntType<'ctx> {
-        self.ctx.i32_type()
+    fn create_type(&self, typ: &Type) -> inkwell::types::IntType<'ctx> {
+        match typ {
+            Type::Integer => self.ctx.i32_type(),
+            _ => todo!("Other types vere not implemented."),
+        }
     }
 
     fn get_var(
         &self,
         ident: &String,
     ) -> Result<inkwell::values::PointerValue, String> {
-        for vars in self.variables.iter().rev() {
+        for vars in self.variables.borrow().iter().rev() {
             if let Some(r) = vars.get(ident) {
                 return Ok(*r);
             }
@@ -587,9 +659,9 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
         }
     }
 
-    fn codegen_vardec(&mut self, var: VarDec) {
+    fn codegen_vardec(&self, var: VarDec) {
         let t = self.create_type(&var.typ);
-        self.variables.back_mut().unwrap().insert(
+        self.variables.borrow_mut().back_mut().unwrap().insert(
             var.ident.clone(),
             self.builder.build_alloca(t, var.ident.as_str()).unwrap(),
         );

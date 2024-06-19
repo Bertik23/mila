@@ -44,6 +44,8 @@ pub enum Token {
     Else,
     Do,
     Break,
+    To,
+    Downto,
     // Text(String),
     Ident(String),
     Integer(i32),
@@ -182,11 +184,16 @@ pub fn tokenize(code: &str) -> Result<Vec<Token>, String> {
                     "or" => Or,
                     "and" => And,
                     "function" => Function,
+                    "procedure" => Function,
                     "begin" => Begin,
                     "end" => End,
                     "program" => Program,
                     "exit" => Exit,
                     "break" => Break,
+                    "to" => To,
+                    "downto" => Downto,
+                    "div" => Div,
+                    "mod" => Mod,
                     id => Ident(id.to_string()),
                 }
             },
@@ -200,10 +207,13 @@ pub fn tokenize(code: &str) -> Result<Vec<Token>, String> {
                 } else if x.starts_with('&') {
                     Integer(
                         i32::from_str_radix(x.trim_start_matches('&'), 8)
-                            .unwrap(),
+                            .expect(format!("Invalid number. {}", x).as_str()),
                     )
                 } else {
-                    Integer(x.parse().unwrap())
+                    Integer(
+                        x.parse()
+                            .expect(format!("Invalid number. {}", x).as_str()),
+                    )
                 }
             },
             "^\".*\"",

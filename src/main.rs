@@ -1,10 +1,13 @@
 #![allow(clippy::redundant_closure_call)]
+#![allow(clippy::upper_case_acronyms)]
 use clap::Parser;
 use std::process::Command;
 use std::{fs, io::Write};
 
 mod codegen;
 mod parser;
+#[cfg(test)]
+mod test;
 mod tokenizer;
 
 #[derive(Parser, Debug)]

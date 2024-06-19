@@ -4,7 +4,7 @@ use crate::tokenizer::Token;
 
 #[derive(Debug, Clone)]
 pub struct VarDec {
-    is_const: bool,
+    pub is_const: bool,
     pub ident: String,
     pub typ: Type,
     pub assign: Option<Expression>,
@@ -42,6 +42,7 @@ pub enum Expression {
         from: Box<Expression>,
         to: Box<Expression>,
         up: bool,
+        body: Box<Expression>,
     },
     Op(Operation, Box<Expression>, Box<Expression>),
     Var(String),
@@ -192,9 +193,14 @@ fn parse_fn_declaration(token_stream: &mut VecDeque<Token>) -> FnDec {
     if !matches!(token_stream.pop_front(), Some(Token::RParen)) {
         panic!("Syntax error: Expected ')'");
     };
-    parse_colon(token_stream);
 
-    let typ = parse_type(token_stream);
+    let typ = if matches!(token_stream.front(), Some(Token::Collon)) {
+        parse_colon(token_stream);
+
+        parse_type(token_stream)
+    } else {
+        Type::Integer
+    };
 
     parse_semicolon(token_stream);
 
@@ -292,7 +298,36 @@ fn parse_while(token_stream: &mut VecDeque<Token>) -> Expression {
 }
 
 fn parse_for(token_stream: &mut VecDeque<Token>) -> Expression {
-    todo!()
+    if !matches!(token_stream.pop_front(), Some(Token::For)) {
+        panic!("Syntax error: Expected 'for'");
+    }
+    let var = Var {
+        ident: parse_ident(token_stream),
+        typ: Type::Integer, // Hack
+    };
+
+    parse_colon(token_stream);
+    let from = parse_expression(token_stream);
+    let up = match token_stream.pop_front() {
+        Some(Token::To) => true,
+        Some(Token::Downto) => false,
+        something => panic!(
+            "Syntax error: Expexted 'to' or 'downto' found {:?}",
+            something
+        ),
+    };
+    let to = parse_expression(token_stream);
+    if !matches!(token_stream.pop_front(), Some(Token::Do)) {
+        panic!("Syntax error: Expected 'do'");
+    }
+    let body = parse_expression(token_stream);
+    Expression::For {
+        var,
+        from: Box::new(from),
+        to: Box::new(to),
+        up,
+        body: Box::new(body),
+    }
 }
 
 fn parse_operation_l7(token_stream: &mut VecDeque<Token>) -> Expression {
