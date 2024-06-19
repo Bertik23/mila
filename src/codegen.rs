@@ -130,7 +130,6 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
         );
         self.module
             .add_function(main_dec.ident.as_str(), main_fn_type, None);
-        println!("Codegen for main:");
         self.codegen_fndec(main_dec);
     }
 

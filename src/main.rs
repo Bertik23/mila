@@ -41,22 +41,33 @@ fn main() -> Result<(), String> {
 
     let file_name = if let Some(o) = args.output {
         o
-    } else {
+    } else if !args.compile {
         let file_name = file.split_at(file.rfind('/').map_or(0, |x| x + 1)).1;
         file_name
             .split_at(file_name.rfind('.').unwrap_or(file.len()))
             .0
             .to_owned()
             + ".ll"
+    } else {
+        "a.out".to_string()
     };
 
-    println!("Codegen to {}", file_name);
-    codegen::codegen(program, file_name.as_str());
+    codegen::codegen(
+        program,
+        if !args.compile {
+            file_name.as_str()
+        } else {
+            "/tmp/tmp.ll"
+        },
+    );
 
     if args.compile {
         let output = Command::new("clang")
-            .arg(file_name)
+            .arg("-fcolor-diagnostics")
+            .arg("/tmp/tmp.ll")
             .arg("src/stdlib.c")
+            .arg("-o")
+            .arg(file_name)
             .output()
             .unwrap();
         std::io::stdout().write_all(&output.stdout).unwrap();
