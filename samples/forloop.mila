@@ -1,0 +1,19 @@
+program forloop;
+
+begin
+    for i : 10 downto -5 do write(i);
+    writeln(-42);
+    for i : 10 to -5 do write(i);
+    writeln(-42);
+
+    for i : 10 to 25 do write(i);
+    writeln(-42);
+    for i : 10 downto 25 do write(i);
+    writeln(-42);
+
+    for i : 10 to 25 do
+    begin
+        write(i);
+        if i > 20 then break;
+    end;
+end.
