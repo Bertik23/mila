@@ -1,0 +1,15 @@
+program golf;
+
+function is_prime(a: integer): integer;
+begin
+    is_prime := 1;
+    for i : 2 to a-1 do is_prime := (is_prime and (if a mod i = 0 then 0 else 1));
+end;
+
+begin
+    writeln(is_prime(1));
+    writeln(is_prime(2));
+    writeln(is_prime(3));
+    writeln(is_prime(4));
+    writeln(is_prime(5));
+end.
