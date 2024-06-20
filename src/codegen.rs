@@ -390,7 +390,9 @@ impl<'ctx, 'a> Compiler<'ctx, 'a> {
                         )
                     }
                     Operation::Assign => {
-                        let Values::Ptr(l) = l else { panic!() };
+                        let Values::Ptr(l) = l else {
+                            panic!("Must assign to variable")
+                        };
                         let r = match r {
                             Values::Int(r) => r,
                             _ => self.load_val(r).unwrap(),

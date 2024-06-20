@@ -559,7 +559,8 @@ fn parse_lparen(token_stream: &mut VecDeque<Token>) {
 }
 
 fn parse_rparen(token_stream: &mut VecDeque<Token>) {
-    if !matches!(token_stream.pop_front(), Some(Token::RParen)) {
-        panic!("Syntax error: Expected ')'");
+    match token_stream.pop_front() {
+        Some(Token::RParen) => {}
+        e => panic!("Syntax error: Expected ')' found '{:?}'", e),
     };
 }
